@@ -174,6 +174,15 @@ class Locale:
             relative_dictionary[pattern] = key
         return relative_dictionary
 
+    def _combine(self, s):
+        x = {
+            "token": " ".join(map(lambda x: x["token"], s)),
+            "char_start": s[0]["char_start"],
+            "char_end": s[-1]["char_end"]
+        }
+        return x
+
+
     def translate_search(self, search_string, settings=None):
         dashes = ['-', '——', '—', '～']
         sentences = self._sentence_split(search_string, settings=settings)
@@ -184,26 +193,32 @@ class Locale:
             original_tokens, simplified_tokens = self._simplify_split_align(sentence, settings=settings)
             translated_chunk = []
             original_chunk = []
-            for i, word in enumerate(simplified_tokens):
-                if word == '' or word == ' ':
-                    translated_chunk.append(word)
+            for i, struc in enumerate(simplified_tokens):
+                if struc["token"] == '' or struc["token"] == ' ':
+                    translated_chunk.append(struc)
                     original_chunk.append(original_tokens[i])
-                elif word in dictionary and word not in dashes:
-                    translated_chunk.append(dictionary[word])
+                elif struc["token"] in dictionary and struc["token"] not in dashes:
+                    translated_token = dictionary[struc["token"]]
+                    struc["token"] = translated_token
+                    translated_chunk.append(struc)
                     original_chunk.append(original_tokens[i])
-                elif word.strip('()\"\'{}[],.،') in dictionary and word not in dashes:
-                    punct = word[len(word.strip('()\"\'{}[],.،')):]
-                    if punct and dictionary[word.strip('()\"\'{}[],.،')]:
-                        translated_chunk.append(dictionary[word.strip('()\"\'{}[],.،')] + punct)
+                elif struc["token"].strip('()\"\'{}[],.،') in dictionary and struc["token"] not in dashes:
+                    punct = struc["token"][len(struc["token"].strip('()\"\'{}[],.،')):]
+                    if punct and dictionary[struc["token"].strip('()\"\'{}[],.،')]:
+                        translated_token = dictionary[struc["token"].strip('()\"\'{}[],.،')] + punct
+                        struc["token"] = translated_token
+                        translated_chunk.append(struc)
                     else:
-                        translated_chunk.append(dictionary[word.strip('()\"\'{}[],.،')])
+                        translated_token = dictionary[struc["token"].strip('()\"\'{}[],.،')]
+                        struc["token"] = translated_token
+                        translated_chunk.append(struc)
                     original_chunk.append(original_tokens[i])
-                elif self._token_with_digits_is_ok(word):
-                    translated_chunk.append(word)
+                elif self._token_with_digits_is_ok(struc["token"]):
+                    translated_chunk.append(struc)
                     original_chunk.append(original_tokens[i])
                 # Use original token because word_is_tz is case sensitive
-                elif translated_chunk and word_is_tz(original_tokens[i]):
-                    translated_chunk.append(word)
+                elif translated_chunk and word_is_tz(original_tokens[i]["token"]):
+                    translated_chunk.append(struc)
                     original_chunk.append(original_tokens[i])
                 else:
                     if translated_chunk:
@@ -215,10 +230,16 @@ class Locale:
                 translated.append(translated_chunk)
                 original.append(original_chunk)
         for i in range(len(translated)):
-            if "in" in translated[i]:
+            if "in" in [t["token"] for t in translated[i]]:
                 translated[i] = self._clear_future_words(translated[i])
-            translated[i] = self._join_chunk(list(filter(bool, translated[i])), settings=settings)
-            original[i] = self._join_chunk(list(filter(bool, original[i])), settings=settings)
+            # Remove Nones
+            translated[i] = [tran for tran in translated[i] if tran["token"] is not None]
+            original[i] = [orig for orig in original[i] if orig["token"] is not None]
+
+        translated = list(filter(lambda x: x, translated))
+        original = list(filter(lambda x: x, original))
+        translated = list(map(self._combine, translated))
+        original = list(map(self._combine, original))
         return translated, original
 
     def _get_abbreviations(self, settings):
@@ -323,11 +344,25 @@ class Locale:
                 newdict[item] = dictionary[item]
         return newdict
 
+    def _enhance(self, words):
+        enhanced_words = []
+        # Compute char start and char ends for each token
+        for idx, word in enumerate(words):
+            char_start = len("".join(words[:idx])) + len(words[:idx])
+            char_end = len("".join(words[:idx])) + len(words[:idx]) + len(words[idx])
+            enhanced_word = { "token": word, "char_start": char_start, "char_end": char_end }
+            enhanced_words.append(enhanced_word)
+        return enhanced_words
+
     def _word_split(self, string, settings):
         if 'no_word_spacing' in self.info:
-            return self._split(string, keep_formatting=True, settings=settings)
-        else:
-            return string.split()
+            words = self._split(string, keep_formatting=True, settings=settings)
+            enhanced_words = self._enhance(words)
+            return enhanced_words
+        words = string.split()
+        enhanced_words = self._enhance(words)
+        return enhanced_words
+
 
     def _split(self, date_string, keep_formatting, settings=None):
         tokens = [date_string]
@@ -419,8 +454,8 @@ class Locale:
 
     def _clear_future_words(self, words):
         freshness_words = {'day', 'week', 'month', 'year', 'hour', 'minute', 'second'}
-        if set(words).isdisjoint(freshness_words):
-            words.remove("in")
+        if set([word["token"] for word in words]).isdisjoint(freshness_words):
+            words = [word for word in words if word["token"] != "in"]
         return words
 
     def _join(self, tokens, separator=" ", settings=None):

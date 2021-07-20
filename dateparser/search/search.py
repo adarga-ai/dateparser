@@ -108,7 +108,7 @@ class _ExactLanguageSearch:
         if settings.RELATIVE_BASE:
             need_relative_base = False
         for i, item in enumerate(to_parse):
-            if len(item) <= 2:
+            if len(item["token"]) <= 2:
                 continue
 
             parsed_item, is_relative = self.parse_item(parser, item, translated[i], parsed, need_relative_base)
