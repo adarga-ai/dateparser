@@ -220,7 +220,7 @@ class TestTranslateSearch(BaseTestCase):
     ])
     def test_search_date_string(self, shortname, datetime_string):
         result = self.exact_language_search.search(shortname, datetime_string, settings=Settings())[1][0]
-        self.assertEqual(result, datetime_string)
+        self.assertEqual(result["text"], datetime_string)
 
     @parameterized.expand([
         # Arabic
@@ -441,7 +441,7 @@ class TestTranslateSearch(BaseTestCase):
     @apply_settings
     def test_search_and_parse(self, shortname, string, expected, settings=None):
         result = self.exact_language_search.search_parse(shortname, string, settings=settings)
-        self.assertEqual(result, expected)
+        self.assertEqual([(res[0]["text"], res[1]) for res in result], expected)
 
     @parameterized.expand([
         # English
@@ -508,7 +508,7 @@ class TestTranslateSearch(BaseTestCase):
     @apply_settings
     def test_relative_base_setting(self, shortname, string, expected, settings=None):
         result = self.exact_language_search.search_parse(shortname, string, settings=settings)
-        self.assertEqual(result, expected)
+        self.assertEqual([(res[0]["text"], res[1]) for res in result], expected)
 
     @parameterized.expand([
         # English
@@ -554,12 +554,11 @@ class TestTranslateSearch(BaseTestCase):
                     'bedingungslose Kapitulation der Wehrmacht in Kraft',
               [('am 2. Mai 1945', datetime.datetime(1945, 5, 2, 0, 0)),
                ('Am 8. Mai 1945', datetime.datetime(1945, 5, 8, 0, 0))]),
-
     ])
     @apply_settings
     def test_splitting_of_not_parsed(self, shortname, string, expected, settings=None):
         result = self.exact_language_search.search_parse(shortname, string, settings=settings)
-        self.assertEqual(result, expected)
+        self.assertEqual([(res[0]["text"], res[1]) for res in result], expected)
 
     @parameterized.expand([
         # Arabic
@@ -742,7 +741,10 @@ class TestTranslateSearch(BaseTestCase):
     ])
     def test_date_search_function(self, text, languages, settings, expected):
         result = search_dates(text, languages=languages, settings=settings)
-        self.assertEqual(result, expected)
+        if result:
+            self.assertEqual([(res.text, res.datetime) for res in result], expected)
+        else:
+            self.assertEqual(result, expected)
 
     @parameterized.expand([
         param(text="15 de outubro de 1936",
@@ -753,14 +755,14 @@ class TestTranslateSearch(BaseTestCase):
         param(text="15 de outubro de 1936",
               add_detected_language=False,
               expected=[
-                  ("15 de outubro de 1936", datetime.datetime(1936, 10, 15, 0, 0))
+                  ("15 de outubro de 1936", datetime.datetime(1936, 10, 15, 0, 0), None)
               ]),
     ])
     def test_search_dates_returning_detected_languages_if_requested(
         self, text, add_detected_language, expected
     ):
         result = search_dates(text, add_detected_language=add_detected_language)
-        self.assertEqual(result, expected)
+        self.assertEqual([(res.text, res.datetime, res.language) for res in result], expected)
 
     @parameterized.expand([
         param(text='19 марта 2001',

@@ -4,6 +4,38 @@ from dateparser.search.search import DateSearchWithDetection
 _search_with_detection = DateSearchWithDetection()
 
 
+class DateMention:
+    def __init__(self, meta, date, language):
+        self.text = meta["text"]
+        self.char_start = meta["char_start"]
+        self.char_end = meta["char_end"]
+        self.datetime = date
+        self.language = language
+
+    def __repr__(self):
+        return self.datetime.strftime("%d-%m-%Y")
+
+    def to_dict(self):
+        return {
+            "text": self.text,
+            "char_start": self.char_start,
+            "char_end": self.char_end,
+            "datetime": self.datetime.isoformat(sep="T", timespec="milliseconds") + "Z"
+        }
+
+    @classmethod
+    def build_from_language(cls, payload):
+        meta, date, language = payload
+        return cls(meta, date, language)
+
+    @classmethod
+    def build_no_language(cls, payload):
+        meta, date = payload
+        language = None
+        return cls(meta, date, language)
+
+
+
 def search_dates(text, languages=None, settings=None, add_detected_language=False):
     """Find all substrings of the given string which represent date and/or time and parse them.
 
@@ -54,4 +86,7 @@ def search_dates(text, languages=None, settings=None, add_detected_language=Fals
         if add_detected_language:
             language = result.get('Language')
             dates = [date + (language, ) for date in dates]
-        return dates
+            date_objects = [DateMention.build_from_language(d) for d in dates]
+        else:
+            date_objects = [DateMention.build_no_language(d) for d in dates]
+        return date_objects

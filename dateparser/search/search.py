@@ -4,6 +4,7 @@ from dateparser.languages.loader import LocaleDataLoader
 from dateparser.conf import apply_settings, Settings
 from dateparser.date import DateDataParser
 from dateparser.search.text_detection import FullTextLanguageDetector
+from dateparser.utils.mentions import combine, split_mention
 import regex as re
 
 
@@ -50,7 +51,7 @@ class _ExactLanguageSearch:
             for j, item in enumerate(possible_parsed_splits[i]):
                 if item[0]['date_obj'] is None:
                     not_parsed += 1
-                if not any(char.isdigit() for char in possible_substrings_splits[i][j]):
+                if not any(char.isdigit() for char in possible_substrings_splits[i][j]["text"]):
                     num_substrings_without_digits += 1
             rating.append([
                 num_substrings,
@@ -60,19 +61,22 @@ class _ExactLanguageSearch:
             best_index, best_rating = min(enumerate(rating), key=lambda p: (p[1][1], p[1][0], p[1][2]))
         return possible_parsed_splits[best_index], possible_substrings_splits[best_index]
 
-    def split_by(self, item, original, splitter):
-        if item.count(splitter) <= 2:
-            return [[item.split(splitter), original.split(splitter)]]
 
-        item_all_split = item.split(splitter)
-        original_all_split = original.split(splitter)
+
+    def split_by(self, item, original, splitter):
+        if item["text"].count(splitter) <= 2:
+            return [[split_mention(item, splitter), split_mention(original, splitter)]]
+
+        item_all_split = split_mention(item, splitter)
+        original_all_split = split_mention(original, splitter)
+
         all_possible_splits = [[item_all_split, original_all_split]]
         for i in range(2, 4):
             item_partially_split = []
             original_partially_split = []
             for j in range(0, len(item_all_split), i):
-                item_join = splitter.join(item_all_split[j:j + i])
-                original_join = splitter.join(original_all_split[j:j + i])
+                item_join = combine(item_all_split[j:j + i], sep=splitter)
+                original_join = combine(original_all_split[j:j + i], sep=splitter)
                 item_partially_split.append(item_join)
                 original_partially_split.append(original_join)
             all_possible_splits.append([item_partially_split, original_partially_split])
@@ -82,7 +86,7 @@ class _ExactLanguageSearch:
         splitters = [',', '،', '——', '—', '–', '.', ' ']
         possible_splits = []
         for splitter in splitters:
-            if splitter in item and item.count(splitter) == original.count(splitter):
+            if splitter in item["text"] and item["text"].count(splitter) == original["text"].count(splitter):
                 possible_splits.extend(self.split_by(item, original, splitter))
         return possible_splits
 
@@ -108,13 +112,14 @@ class _ExactLanguageSearch:
         if settings.RELATIVE_BASE:
             need_relative_base = False
         for i, item in enumerate(to_parse):
-            if len(item["token"]) <= 2:
+            if len(item["text"]) <= 2:
                 continue
 
-            parsed_item, is_relative = self.parse_item(parser, item, translated[i], parsed, need_relative_base)
+            parsed_item, is_relative = self.parse_item(parser, item["text"], translated[i]["text"], parsed, need_relative_base)
             if parsed_item['date_obj']:
                 parsed.append((parsed_item, is_relative))
-                substrings.append(original[i].strip(" .,:()[]-'"))
+                original[i]["text"] = original[i]["text"].strip(" .,:()[]-'")
+                substrings.append(original[i])
                 continue
 
             possible_splits = self.split_if_not_parsed(item, original[i])
@@ -128,12 +133,13 @@ class _ExactLanguageSearch:
                 current_substrings = []
                 if split_translated:
                     for j, jtem in enumerate(split_translated):
-                        if len(jtem) <= 2:
+                        if len(jtem["text"]) <= 2:
                             continue
                         parsed_jtem, is_relative_jtem = self.parse_item(
-                            parser, jtem, split_translated[j], current_parsed, need_relative_base)
+                            parser, jtem["text"], split_translated[j]["text"], current_parsed, need_relative_base)
                         current_parsed.append((parsed_jtem, is_relative_jtem))
-                        current_substrings.append(split_original[j].strip(' .,:()[]-'))
+                        split_original[j]["text"] = split_original[j]["text"].strip(' .,:()[]-')
+                        current_substrings.append(split_original[j])
                 possible_parsed.append(current_parsed)
                 possible_substrings.append(current_substrings)
             parsed_best, substrings_best = self.choose_best_split(possible_parsed, possible_substrings)
